@@ -21,8 +21,6 @@
 #       actuators: WIP
 
 from morse.builder import *
-import numpy as nm
-import math
 
 
 # Initialize DJANGO
@@ -93,23 +91,25 @@ pose_godot = Pose ()
 pose_godot.name = "pose"
 godot.append(pose_godot)
 pose_godot.add_interface ('socket')
+#waypoint_godot = Waypoint ()
 waypoint_godot = RotorcraftWaypoint ()
 waypoint_godot.name = "waypoint"
 godot.append (waypoint_godot)
 waypoint_godot.add_interface ('socket')
-#motion_godot = MotionVW ()
-#motion_godot.name = "motion"
-#godot.append (motion_godot)
-#motion_godot.add_interface ('socket')
 videocamera_godot = VideoCamera ()
 videocamera_godot.name = "videocamera"
 videocamera_godot.add_interface ('socket')
 videocamera_godot.add_stream ('socket')
-#videocamera_godot.rotate (math.cos (math.radians (180)), math.cos (math.radians (180)), 0)
-#videocamera_godot.rotate (0, -math.cos (math.radians (10)), 0)
-videocamera_godot.rotate (0, - math.radians (45), 0)
+#videocamera_godot.rotate (0, - math.radians (45), 0)
+videocamera_godot.rotate (0, 0, 0)
+ptu_godot = PTU ()
+ptu_godot.name = "PTU"
+ptu_godot.add_interface ('socket')
+ptu_godot.properties (Speed = 0.5)
+ptu_godot.translate (x = 0.2020, y = 1.4400)
 godot.append (videocamera_godot)
-
+godot.append (ptu_godot)
+ptu_godot.append (videocamera_godot)
 
 # Setup environment
 #env = Environment('outdoors')

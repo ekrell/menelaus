@@ -134,11 +134,6 @@ def main ():
 	quadModeSet_json = json.dumps (quadModeSet)
 	r.publish (GCSconnStr, quadModeSet_json)
 
-	# Tell quadcopter to start recording with video camera
-	quadMSG = { 'tag':4 }
-	quadMSG_json = json.dumps (quadMSG)
-	r.publish (GCSconnStr, quadMSG_json)
-
 	# Main Loop 
 	while (len (targets) > 0):  # As long as targets remain
 		
@@ -204,7 +199,7 @@ def main ():
 			# Newpoint = Centroid + N
 			way = nm.add (N, centroid)
 
-			# Set waypoint and point to head toward
+			# Set waypoint and point heading toward
 			quad['waypoint']['x'] = way[0]
 			quad['waypoint']['y'] = way[1]
 			quad['waypoint']['heading_x'] = waypoint_centroid[0]
@@ -213,6 +208,18 @@ def main ():
 			# Send waypoint to quadcopter
 			msgSend = quad['waypoint']
 			msgSend['tag'] = 3
+			msgSend_json = json.dumps (msgSend)
+			r.publish (GCSconnStr, msgSend_json)
+
+			# Set targets' centroid as camera target
+			quad['target'] = {}
+			quad['target']['x'] = centroid[0]
+			quad['target']['y'] = centroid[1]
+
+			# Send camera target to quadcopter
+			msgSend = quad['target']
+			msgSend['tag'] = 4
+			print (msgSend)
 			msgSend_json = json.dumps (msgSend)
 			r.publish (GCSconnStr, msgSend_json)
 
