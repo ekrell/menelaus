@@ -50,7 +50,7 @@ to coordinate a follow behavior.
     
 **Initiate follow behavior**
 
-  python3 scripts/follow_targets.py -q godot -t susan,anton
+    python3 scripts/follow_targets.py -q godot -t susan,anton
     
   
     
