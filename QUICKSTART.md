@@ -35,6 +35,10 @@ Another python script represents a ground control station reading each robot's m
 to coordinate a follow behavior. 
 
     cd <chosen directory>/menelaus
+    
+**Launch Morse scene**
+
+    morse run scenes/field_exercise_1.py
 
 **Start a MARISA robot named susan**
 
