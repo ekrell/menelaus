@@ -34,6 +34,8 @@ The QCOORD will also be initiated.
 Another python script represents a ground control station reading each robot's messages and using that information
 to coordinate a follow behavior. 
 
+    cd <chosen directory>/menelaus
+
 **Start a MARISA robot named susan**
 
     python3 robots/marisa.py -n susan -w inData/round10/susan.waypoints
