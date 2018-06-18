@@ -120,7 +120,7 @@ def pong (redis, commStr):
 	reply_json = json.dumps (reply, separators = (',', ':'))
 	redis.publish (commStr, reply_json)
 
-def receiveWaypoints(robot, delta, comm):
+def receiveWaypoints(robot, delta, redis, connStr, comm):
 
 	halt = False
 	speed = 1
@@ -177,18 +177,19 @@ def receiveWaypoints(robot, delta, comm):
 					x_angle = float (rotation[0])
 					y_angle = float (rotation[1])
 					z_angle = float (rotation[2])
-
-					robot['camera']['xGimbal_deg'] = math.degrees (x_angle)
+					robot['camera']['xGimbal_deg'] = math.degrees (z_angle)
 					robot['camera']['yGimbal_deg'] = math.degrees (y_angle)
+
+					# FIX?????
+					#robot['camera']['xGimbal_deg'] = (-1) * robot['camera']['xGimbal_deg']
+					#robot['camera']['yGimbal_deg'] = 0
 
 					# Use spherical coordinates to tilt the camera's gimbal
 					# Code adapted from Morse Simulator: http://www.openrobots.org/morse/doc/1.2/_modules/morse/actuators/ptu.html
 					
 					# Get own position
 					status = get_status(robot);
-
 					# Calc target position with respect to camera/gimbal
-					print ("4", msg_data)
 					target = ( msg_data['x'] - status['pos_x'], msg_data['y'] - status['pos_y'], 0 - 30 )
 					distance = nm.sqrt (target[0] ** 2 + target[1] ** 2 + target[2] ** 2)
 					theta = math.asin (target[2] / distance)
@@ -201,8 +202,28 @@ def receiveWaypoints(robot, delta, comm):
 					tilt = -theta + parent_tilt
 
 					getattr(robot['simu'], robot['name']).PTU.set_pan_tilt(0, tilt)
-					
-				time.sleep(0.1)
+	
+		# Publish info
+		status = get_status(robot);
+		current = getattr(robot['simu'], robot['name']).PTU.videocamera.get_configurations()
+		rotation = re.findall ('rotation[^]]*', str (current))[0]
+		rotation = rotation.replace ('rotation\': [[', '')
+		rotation = rotation.split (", ")
+		x_angle = float (rotation[0])
+		y_angle = float (rotation[1])
+		z_angle = float (rotation[2])
+		robot['camera']['xGimbal_deg'] = math.degrees (z_angle)
+		robot['camera']['yGimbal_deg'] = math.degrees (y_angle)
+
+		info = robot['camera']
+		info['tag'] = 5
+		info['pos_x'] = status['pos_x']
+		info['pos_y'] = status['pos_y']
+		info['pos_z'] = status['pos_z']
+		info_json = json.dumps (info, separators = (',', ':'))
+		print (info['pos_x'], info['pos_y'])
+		redis.publish (connStr, info_json)
+		time.sleep(0.5)
 	return 0
 
 
@@ -257,10 +278,10 @@ def main ():
 		camera = {'xSensor_mm':cam_height,
 			'ySensor_mm':cam_width, 
 			'focallen_mm':cam_focallen,
-			'xGimbal_deg':math.degrees (x_angle),
+			'xGimbal_deg':math.degrees (z_angle),
 			'yGimbal_deg':math.degrees (y_angle)}
 		robot['camera'] = camera
-		print (camera)
+		#print (camera)
 
 		# Ensure expected robot configuraton
 		systems_check (robot)
@@ -274,7 +295,7 @@ def main ():
 					pong (r, connStr)
 				elif (msg_data['tag'] == Command.modeWaypoints):
 					pong (r, connStr)
-					receiveWaypoints (robot, 1, p)
+					receiveWaypoints (robot, 1, r, connStr, p)
 				elif (msg_data['tag'] == Command.halt):
 					halt (robot)
 				elif (msg_data['tag'] == Command.terminate):

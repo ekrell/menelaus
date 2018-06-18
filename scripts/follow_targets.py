@@ -12,6 +12,9 @@ import ast
 import re
 import json
 import redis
+from shapely import geometry
+from shapely.geometry import Polygon, Point
+
 
 def getTargetByName (targets, name):
 	for t in targets:
@@ -38,6 +41,64 @@ def calcCentroid (targets, posORway):
 	x, y = zip (*points)
 	l = len (x)
 	return sum (x) / l, sum (y) / l
+
+def calcFootprintCentroid(points):
+	points = [(p[0], p[1]) for p in points]
+	x, y = zip(*points)
+	l = len(x)
+	return sum(x) / l, sum(y) / l
+
+
+def calcFieldOfView (camera):
+	"""
+	Function: calcFieldOfView
+	Arguments:
+	    camera: Camera object
+	Purpose:
+	    Calculate the field of view (FoV) for a camera 
+	    given the x and y sensor dimensions and the focal length
+	"""
+	xView = (2 * math.atan (camera['xSensor_mm'] / (2 * camera['focallen_mm'])))
+	yView = (2 * math.atan (camera['ySensor_mm'] / (2 * camera['focallen_mm'])))
+	return (xView, yView)
+
+def calcGroundFootprintDimensions (camera, altitude):
+	"""
+	Function: calcGroundFootprintDimension
+	Arguments:
+	    camera: Camera object
+	    altitude_m: Altitude of camera in meters
+	Purpose: 
+	    Calculate the ground footprint of an aerial camera, 
+	    such as one mounted on an aerial vehicle. 
+	    Finds distances relative to the camera position, but not the actual position
+	"""
+
+	#FoV = calcFieldOfView (camera)
+	## WARNING: Hard-coded. Assumes MORSE default camera dimensions and focallen
+	FoV = [768, 768]
+
+	distFront = altitude * (math.tan(nm.radians (camera['xGimbal_deg'] + 0.5 * FoV[0])))
+	distBehind = altitude * (math.tan(nm.radians (camera['xGimbal_deg'] - 0.5 * FoV[0])))
+	distLeft = altitude * (math.tan(nm.radians (camera['yGimbal_deg'] - 0.5 * FoV[1])))
+	distRight = altitude * (math.tan(nm.radians (camera['yGimbal_deg'] + 0.5 * FoV[1])))
+	return (distFront, distBehind, distLeft, distRight)
+
+def calcGroundFootprint (camera, altitude, position):
+	"""
+	Function: calcGroundFootprint
+	Arguments: 
+	    camera: Camera object
+	    altitude_m: Altitude of camera in meters
+	    position: ground (x, y) coordinates of camera
+	"""
+	(distFront, distBehind, distLeft, distRight) = calcGroundFootprintDimensions (camera, altitude)
+	posLowerLeft = (position[0] + distLeft, position[1] + distBehind)
+	posLowerRight = (position[0] + distRight, position[1] + distBehind)
+	posUpperLeft = (position[0] + distLeft, position[1] + distFront)
+	posUpperRight = (position[0] + distRight, position[1] + distFront)
+	return (posLowerLeft, posUpperLeft, posUpperRight, posLowerRight)
+
 
 def getMaxMinFromPosition (targets, position):
 	"""
@@ -77,6 +138,23 @@ def rotatePoint(centerPoint,point,angle):
 	return temp_point
 
 
+def getGroundFootprint (position, target, camera, altitude):
+        # Calculate angle
+        i = nm.subtract (target, position)
+        theta = nm.arctan2(i[1], i[0])
+        if (theta < 0):
+                theta = theta + 2 * math.pi
+        theta = theta - (math.pi / 2)
+
+        footprint =  calcGroundFootprint (camera, altitude, position)
+        footprint = [rotatePoint (position, footprint[0], theta),
+                     rotatePoint (position, footprint[1], theta),
+                     rotatePoint (position, footprint[2], theta),
+                     rotatePoint (position, footprint[3], theta)]
+        return footprint
+
+
+
 def main ():
 	
 	# Initialize null robots
@@ -97,7 +175,7 @@ def main ():
 	# Init message passing interface (via Redis)
 	r = redis.StrictRedis (host = 'localhost', port = 6379, db = 0)
 	p = r.pubsub ()
-	GCSconnStr = 'GCS'	
+	GCSconnStr = 'GCS'
 
 	quadName = args.quadcopter
 	targetNames = args.targets.split (",")
@@ -106,12 +184,13 @@ def main ():
 	p.subscribe (quadConnStr)	
 
 	# Init quadcopter
-	quad = { 'name':quadName, 'connStr':quadConnStr, 'waypoint':{}  }
-
+	quad = { 'name':quadName, 'connStr':quadConnStr, 'waypoint':{}, 'x':0, 'y':0}
+			
 	# Init targets
 	for name in targetNames:
 		targetConnStr = 'Morse-Marisa-' + name
 		target = {'name':name, 'connStr':targetConnStr}
+		target["distance"] = None
 		targets.append (target)
 
 	# Subscribe to quadcopter
@@ -134,6 +213,23 @@ def main ():
 	quadModeSet_json = json.dumps (quadModeSet)
 	r.publish (GCSconnStr, quadModeSet_json)
 
+	# Setup camera
+	# ASSUMES the constant altitude of 30m
+	camera = { 'xSensor_mm': 255,
+		   'ySensor_mm': 255,
+		   'focallen_mm': 93.0909,
+		   'xGimbal_deg': 0,
+		   'yGimbal_deg': 0,
+	}
+	altitude = 30
+
+	# Control logic
+	haveWaypoint = False
+	firstWaypoint = True
+	haveTargetPose = False
+
+	position = None
+
 	# Main Loop 
 	while (len (targets) > 0):  # As long as targets remain
 		
@@ -148,10 +244,27 @@ def main ():
 		# Update quadcopter status
 		msg = p.get_message ()
 		if msg:
-			print (msg)
+			if msg['type'] == 'message':
+				msg_data = json.loads(msg['data'].decode("utf-8"))
+				if msg_data['tag'] == 5:
+					camera['xGimbal_deg'] = abs(msg_data['xGimbal_deg'])
+					camera['yGimbal_deg'] = 0
+					quad["x"] = msg_data['pos_x']
+					quad['y'] = msg_data['pos_y']
+					print (msg_data)
+					position = (float(quad["x"]), float(quad["y"]))
+					print (position)
+
+		# Find camera footprint
+		if haveWaypoint == True and position is not None:
+
+			tpose = [float(centroid[0]), float (centroid[1])]
+
+			footprint = getGroundFootprint (position, tpose, camera, altitude)
+			footprint_poly = geometry.Polygon([[p[0], p[1]] for p in footprint])
+			footprint_centroid = calcFootprintCentroid(footprint)
 
 		for t in targets:
-			
 			# Update targets' status
 			msg = t['pubsub'].get_message ()
 
@@ -167,17 +280,47 @@ def main ():
 					newWaypoint = True
 					
 					msg_data = json.loads (msg['data'].decode("utf-8"))
-					
+
+					haveTargetPose = True
 					t['pos_x'] = msg_data['pos_x']
 					t['pos_y'] = msg_data['pos_y']
 					t['dest_x'] = msg_data['dest_x']
 					t['dest_y'] = msg_data['dest_y']
 
+			reposition = False
+			# Update distance from footprint information
+			if haveTargetPose == True and haveWaypoint == True:
+				distFromCenter =  nm.sqrt(((footprint_centroid[0] - t['pos_x']) ** 2) + \
+				                          ((footprint_centroid[1] - t['pos_y']) ** 2))
+				distFromBoundary = footprint_poly.boundary.distance( geometry.Point([t['pos_x'], t['pos_y']]))
+				distFromFootprint = footprint_poly.distance( geometry.Point([t['pos_x'], t['pos_y']]))
+				distFromFootprintRel = distFromBoundary if distFromFootprint != 0 else \
+					distFromBoundary * (-1)
+				t['distance'] = {'fromCenter' : distFromCenter,
+				                 'fromFootprint' : distFromFootprint,
+				                 'fromBoundary' : distFromBoundary,
+				                 'fromFootprintRel' : distFromFootprintRel,
+				}
+				#print ("------")
+				#print (footprint)
+				#print ("POS",  position)
+				#print ("TPOS", tpose)
+				#print ("X-deg", camera['xGimbal_deg'])
+				if t['distance']['fromFootprintRel'] > 0:
+					print ("%s is outside camera view" % t['name'])
+					reposition = True
+				#	
+				else:
+					print ("%s is within camera view"  % t['name'])
+				print ("------")
+
 		if newWaypoint:
-			
+
 			#Get centroid of targets' positions
 			centroid = calcCentroid (targets, "pos")
-			
+			#print ("centroid", centroid)
+
+
 			# Get centroid of target's next waypoint positions
 			waypoint_centroid = calcCentroid (targets, "way")
 
@@ -199,27 +342,37 @@ def main ():
 			# Newpoint = Centroid + N
 			way = nm.add (N, centroid)
 
+
 			# Set waypoint and point heading toward
-			quad['waypoint']['x'] = way[0]
-			quad['waypoint']['y'] = way[1]
-			quad['waypoint']['heading_x'] = waypoint_centroid[0]
-			quad['waypoint']['heading_y'] = waypoint_centroid[1]
-						
+			haveWaypoint = True
+			if reposition == True or firstWaypoint == True:
+				quad['waypoint']['x'] = way[0]
+				quad['waypoint']['y'] = way[1]
+			else: 
+				quad['waypoint']['x'] = quad['waypoint']['x']
+				quad['waypoint']['y'] = quad['waypoint']['y']
+			quad['waypoint']['heading_x'] = centroid[0]
+			quad['waypoint']['heading_y'] = centroid[1]
+								
+
+			#print (quad['waypoint'])
 			# Send waypoint to quadcopter
 			msgSend = quad['waypoint']
 			msgSend['tag'] = 3
 			msgSend_json = json.dumps (msgSend)
 			r.publish (GCSconnStr, msgSend_json)
 
+			firstWaypoint = False
+
+
 			# Set targets' centroid as camera target
 			quad['target'] = {}
-			quad['target']['x'] = centroid[0]
-			quad['target']['y'] = centroid[1]
+			quad['target']['x'] = quad['waypoint']['x']  #centroid[0]
+			quad['target']['y'] = quad['waypoint']['y']  #centroid[1]
 
 			# Send camera target to quadcopter
 			msgSend = quad['target']
 			msgSend['tag'] = 4
-			print (msgSend)
 			msgSend_json = json.dumps (msgSend)
 			r.publish (GCSconnStr, msgSend_json)
 
@@ -241,7 +394,6 @@ def main ():
 
 		# Delay
 		time.sleep (.5)
-
 
 
 

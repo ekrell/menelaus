@@ -71,6 +71,7 @@ def main ():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("-n", "--name", help = "variable name of robot in MORSE simulator")
 	parser.add_argument("-w", "--waypoints", help = "file containing waypoints")
+	parser.add_argument("-v", "--verbose", help = "print robot info to stdout", action='store_true')
 	args = parser.parse_args()
 	
 	# Read waypoints
@@ -107,19 +108,23 @@ def main ():
 					goto_target (robot, {'x':w[0], 'y':w[1]}, 2.0)
 					while (getattr (simu, robot['name']).waypoint.get_status() == "Transit"):
 						status_json = json.dumps (get_status (robot), separators = (',', ':'))
+						if (args.verbose):
+							print (str (get_status (robot)))
+						
 						r.publish (channelString, status_json)
 						time.sleep(0.5)
 					#r.publish (channelString, "Arrived!")
 					#halt(robot)
-	
-			##goto_target(robot, {'x':50, 'y':-50}, 2.0)
-			##while (getattr(simu, robot['name']).waypoint.get_status() == "Transit"):
-			##	print ('Timestamp: {:%Y-%m-%d %H:%M:%S}'.format(datetime.datetime.now()))
-			##	print (str(get_status(robot)))
-			##	time.sleep(0.5)
-			##halt(robot)
-			##circle_target(robot, {'x':-7, 'y':-7}, 3, 2, 2)
-	
+			else:
+				while (True == True):
+						status = get_status(robot)
+						status["dest_x"] = status["pos_x"]
+						status["dest_y"] = status["pos_y"]
+						print(str(status))
+						
+						status_json = json.dumps (status, separators = (',', ':'))
+						r.publish (channelString, status_json)
+						time.sleep(1)
 		except pymorse.MorseServerError as mse:
 			print('Oops! An error occured!')
 			print(mse)

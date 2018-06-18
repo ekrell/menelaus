@@ -25,7 +25,7 @@ from morse.builder import *
 
 # Initialize DJANGO
 django = ATRV ()
-django.translate (x = -55, y = 50 )
+django.translate (x = 6, y = 6 )
 django.properties (Object = True, Graspable = False, Label = "DJANGO")
 keyboard = Keyboard ()
 keyboard.properties (Speed = 2.0)
@@ -106,7 +106,8 @@ ptu_godot = PTU ()
 ptu_godot.name = "PTU"
 ptu_godot.add_interface ('socket')
 ptu_godot.properties (Speed = 0.5)
-ptu_godot.translate (x = 0.2020, y = 1.4400)
+ptu_godot.translate (x = 0.05, y = 0.05, z = -0.5)
+#ptu_godot.rotate(0, 0, - math.radians(270) )
 godot.append (videocamera_godot)
 godot.append (ptu_godot)
 ptu_godot.append (videocamera_godot)
