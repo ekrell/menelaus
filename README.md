@@ -3,9 +3,6 @@ A single quadcopter follows a group of friendly targets who periodically share t
 The quadcopter attempts to keep the targets in camera view as much as possible. 
 However, the quadcopter also positions itself such that it can remain in place when possible to save energy while tracking the targets.
 
-The project is called "menelaus" because the quadcopter follows its target just as Menelaus followed after Helen to Troy.
-However, Helen was not a particularly friendly target to the pursuer, so the comparison fails. 
-
 ## overview
 Much work has been done on target tracking with unmanned aerial vehicles.
 However, the typical vehicle is a fixed wing with limited hovering or cruising ability. 
