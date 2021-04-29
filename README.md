@@ -5,7 +5,7 @@ The ground vehicles are considered friendly because they are periodically broadc
 Simulation takes place in the [morse](https://www.openrobots.org/morse/doc/stable/morse.html) simulator,
 and communication between robots is handled through a publisher/subscriber scheme implemented with [redis](https://redis.io/). 
 
-**Need to stabilize the camera and smooth out the waypoint following!##
+**Need to stabilize the camera and smooth out the waypoint following!**
 
 ## Description
 
