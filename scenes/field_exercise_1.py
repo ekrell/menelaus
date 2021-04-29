@@ -1,12 +1,12 @@
-# A Morse scene: 
+# A Morse scene:
 # Environment: outdoors
 
 # Robots:
-#    DJANGO - UGV
+#    DJANGO - ROVER
 #       platform: ATRV
 #       sensors: { Pose }
 #       actuators: { Keyboard, Waypoint, MotionVW }
-#    SUSAN - UGV
+#    SUSAN - ROVER
 #       platform: ATRV
 #       sensors: { Pose }
 #       actuators: { Waypoint, MotionVW }
@@ -93,6 +93,7 @@ godot.append(pose_godot)
 pose_godot.add_interface ('socket')
 #waypoint_godot = Waypoint ()
 waypoint_godot = RotorcraftWaypoint ()
+waypoint_godot.speed = 0.01
 waypoint_godot.name = "waypoint"
 godot.append (waypoint_godot)
 waypoint_godot.add_interface ('socket')
@@ -105,7 +106,7 @@ videocamera_godot.rotate (0, 0, 0)
 ptu_godot = PTU ()
 ptu_godot.name = "PTU"
 ptu_godot.add_interface ('socket')
-ptu_godot.properties (Speed = 0.5)
+ptu_godot.properties (Speed = 0.05)
 ptu_godot.translate (x = 0.05, y = 0.05, z = -0.5)
 #ptu_godot.rotate(0, 0, - math.radians(270) )
 godot.append (videocamera_godot)

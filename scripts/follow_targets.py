@@ -20,7 +20,7 @@ def getTargetByName (targets, name):
 	for t in targets:
 		if t['name'] == name:
 			return t
-	
+
 	return None
 
 def calcCentroid (targets, posORway):
@@ -35,9 +35,9 @@ def calcCentroid (targets, posORway):
 	    http://stackoverflow.com/questions/23020659/fastest-way-to-calculate-the-centroid-of-a-set-of-coordinate-tuples-in-python-wi
 	"""
 	if posORway == "pos":
-		points = [(t['pos_x'], t['pos_y']) for t in targets]
+		points = [(t['pos_x'], t['pos_y']) for t in targets if t["comm"]]
 	elif posORway == "way":
-		points = [(t['dest_x'], t['dest_y']) for t in targets]
+		points = [(t['dest_x'], t['dest_y']) for t in targets if t["comm"]]
 	x, y = zip (*points)
 	l = len (x)
 	return sum (x) / l, sum (y) / l
@@ -55,7 +55,7 @@ def calcFieldOfView (camera):
 	Arguments:
 	    camera: Camera object
 	Purpose:
-	    Calculate the field of view (FoV) for a camera 
+	    Calculate the field of view (FoV) for a camera
 	    given the x and y sensor dimensions and the focal length
 	"""
 	xView = (2 * math.atan (camera['xSensor_mm'] / (2 * camera['focallen_mm'])))
@@ -68,9 +68,9 @@ def calcGroundFootprintDimensions (camera, altitude):
 	Arguments:
 	    camera: Camera object
 	    altitude_m: Altitude of camera in meters
-	Purpose: 
-	    Calculate the ground footprint of an aerial camera, 
-	    such as one mounted on an aerial vehicle. 
+	Purpose:
+	    Calculate the ground footprint of an aerial camera,
+	    such as one mounted on an aerial vehicle.
 	    Finds distances relative to the camera position, but not the actual position
 	"""
 
@@ -87,7 +87,7 @@ def calcGroundFootprintDimensions (camera, altitude):
 def calcGroundFootprint (camera, altitude, position):
 	"""
 	Function: calcGroundFootprint
-	Arguments: 
+	Arguments:
 	    camera: Camera object
 	    altitude_m: Altitude of camera in meters
 	    position: ground (x, y) coordinates of camera
@@ -105,17 +105,19 @@ def getMaxMinFromPosition (targets, position):
 	Function: getMaxMinFromPosition
 	Arguments:
 		targets: List of 'Target' structs
-		position: A len-2 list whose first value is x coord and whose second is y coord. 
+		position: A len-2 list whose first value is x coord and whose second is y coord.
 	Purpose:
 		Returns the closest and furthest target name and distances
 	"""
-	
+
 	closestTarget = None
 	farthestTarget = None
 
 	count = 0
 	for t in targets:
-		distance = nm.sqrt(((position[0] - t['pos_x']) ** 2 ) + ((position[1] - t['pos_y']) ** 2 )) 
+		if t["comm"] is False:
+			continue
+		distance = nm.sqrt(((position[0] - t['pos_x']) ** 2 ) + ((position[1] - t['pos_y']) ** 2 ))
 		if count == 0:
 			farthestTarget = { 'name':t['name'], 'value':distance }
 			closestTarget = { 'name':t['name'], 'value':distance }
@@ -156,7 +158,9 @@ def getGroundFootprint (position, target, camera, altitude):
 
 
 def main ():
-	
+
+	reposition = False
+
 	# Initialize null robots
 	quadcopter = {}
 	targets = []
@@ -181,15 +185,15 @@ def main ():
 	targetNames = args.targets.split (",")
 
 	quadConnStr = 'Morse-QCOORD-' + quadName
-	p.subscribe (quadConnStr)	
+	p.subscribe (quadConnStr)
 
 	# Init quadcopter
 	quad = { 'name':quadName, 'connStr':quadConnStr, 'waypoint':{}, 'x':0, 'y':0}
-			
+
 	# Init targets
 	for name in targetNames:
 		targetConnStr = 'Morse-Marisa-' + name
-		target = {'name':name, 'connStr':targetConnStr}
+		target = {'name':name, 'connStr':targetConnStr, 'comm':False}
 		target["distance"] = None
 		targets.append (target)
 
@@ -230,11 +234,13 @@ def main ():
 
 	position = None
 
-	# Main Loop 
-	while (len (targets) > 0):  # As long as targets remain
-		
-		# Control flags	
-		newWaypoint = False	
+	# Main Loop
+	nComm = 0
+	nTargets = len(targets)
+	while (nTargets > 0):  # As long as targets remain
+
+		# Control flags
+		newWaypoint = False
 
 		# World Model
 		centroidPrev = None
@@ -251,9 +257,7 @@ def main ():
 					camera['yGimbal_deg'] = 0
 					quad["x"] = msg_data['pos_x']
 					quad['y'] = msg_data['pos_y']
-					print (msg_data)
 					position = (float(quad["x"]), float(quad["y"]))
-					print (position)
 
 		# Find camera footprint
 		if haveWaypoint == True and position is not None:
@@ -269,55 +273,57 @@ def main ():
 			msg = t['pubsub'].get_message ()
 
 			if msg:
-				
 				# Time of received
-				timestamp = time.time ()	
-				
+				timestamp = time.time ()
+
 				if (msg['type'] == 'message'):
 					#! Should actually check tag to see what kind of message
-					
+
 					# Has received a new waypoint
 					newWaypoint = True
-					
+
 					msg_data = json.loads (msg['data'].decode("utf-8"))
 
-					haveTargetPose = True
 					t['pos_x'] = msg_data['pos_x']
 					t['pos_y'] = msg_data['pos_y']
 					t['dest_x'] = msg_data['dest_x']
 					t['dest_y'] = msg_data['dest_y']
+					t['comm'] = True
 
-			reposition = False
-			# Update distance from footprint information
-			if haveTargetPose == True and haveWaypoint == True:
-				distFromCenter =  nm.sqrt(((footprint_centroid[0] - t['pos_x']) ** 2) + \
-				                          ((footprint_centroid[1] - t['pos_y']) ** 2))
-				distFromBoundary = footprint_poly.boundary.distance( geometry.Point([t['pos_x'], t['pos_y']]))
-				distFromFootprint = footprint_poly.distance( geometry.Point([t['pos_x'], t['pos_y']]))
-				distFromFootprintRel = distFromBoundary if distFromFootprint != 0 else \
-					distFromBoundary * (-1)
-				t['distance'] = {'fromCenter' : distFromCenter,
-				                 'fromFootprint' : distFromFootprint,
-				                 'fromBoundary' : distFromBoundary,
-				                 'fromFootprintRel' : distFromFootprintRel,
-				}
-				#print ("------")
-				#print (footprint)
-				#print ("POS",  position)
-				#print ("TPOS", tpose)
-				#print ("X-deg", camera['xGimbal_deg'])
-				if t['distance']['fromFootprintRel'] > 0:
-					print ("%s is outside camera view" % t['name'])
-					reposition = True
-				#	
-				else:
-					print ("%s is within camera view"  % t['name'])
-				print ("------")
+			try:
+			    # Update distance from footprint information
+			    if haveWaypoint == True:
+				    distFromCenter =  nm.sqrt(((footprint_centroid[0] - t['pos_x']) ** 2) + \
+							      ((footprint_centroid[1] - t['pos_y']) ** 2))
+				    distFromBoundary = footprint_poly.boundary.distance( geometry.Point([t['pos_x'], t['pos_y']]))
+				    distFromFootprint = footprint_poly.distance( geometry.Point([t['pos_x'], t['pos_y']]))
+				    distFromFootprintRel = distFromBoundary if distFromFootprint != 0 else \
+					    distFromBoundary * (-1)
+				    t['distance'] = {'fromCenter' : distFromCenter,
+						     'fromFootprint' : distFromFootprint,
+						     'fromBoundary' : distFromBoundary,
+						     'fromFootprintRel' : distFromFootprintRel,
+				    }
+				    #print ("------")
+				    #print (footprint)
+				    #print ("POS",  position)
+				    #print ("TPOS", tpose)
+				    #print ("X-deg", camera['xGimbal_deg'])
+				    if t['distance']['fromFootprintRel'] + 4 > 0:
+					    print ("%s is outside camera view" % t['name'])
+					    reposition = True
+				    #
+				    else:
+					    print ("%s is within camera view"  % t['name'])
+				    print ("------")
+			except:
+			    continue
 
 		if newWaypoint:
 
 			#Get centroid of targets' positions
 			centroid = calcCentroid (targets, "pos")
+
 			#print ("centroid", centroid)
 
 
@@ -346,14 +352,15 @@ def main ():
 			# Set waypoint and point heading toward
 			haveWaypoint = True
 			if reposition == True or firstWaypoint == True:
+				print("hi")
 				quad['waypoint']['x'] = way[0]
 				quad['waypoint']['y'] = way[1]
-			else: 
+			else:
 				quad['waypoint']['x'] = quad['waypoint']['x']
 				quad['waypoint']['y'] = quad['waypoint']['y']
 			quad['waypoint']['heading_x'] = centroid[0]
 			quad['waypoint']['heading_y'] = centroid[1]
-								
+
 
 			#print (quad['waypoint'])
 			# Send waypoint to quadcopter
@@ -363,6 +370,7 @@ def main ():
 			r.publish (GCSconnStr, msgSend_json)
 
 			firstWaypoint = False
+			reposition = False
 
 
 			# Set targets' centroid as camera target
@@ -389,12 +397,12 @@ def main ():
 			centroidPrev = centroid
 			centroidPrevTimestamp = timestamp
 
+
 		# Reset control flags
 		newWaypoint = False
 
 		# Delay
-		time.sleep (.5)
-
+		time.sleep (.001)
 
 
 

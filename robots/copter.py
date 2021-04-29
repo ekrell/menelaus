@@ -1,4 +1,4 @@
-# UAV : QCOORD
+# UAV : COPTER
 # This script sets up the specification of a UAV in the morse simulator
 # Simulates a UAV quadcopter that follows and records UGV/USV
 
@@ -59,7 +59,7 @@ def systems_check(robot):
 		getattr(robot['simu'], robot['name']).pose.get_properties ()
 		print("[+] Robot {0} sensor: pose online".format(robot['name']))
 	except:
-		print("[+] Robot {0} sensor: pose offline".format(robot['name']))
+		print("[-] Robot {0} sensor: pose offline".format(robot['name']))
 		return None
 
 	# Verify 'waypoint' sensor
@@ -67,7 +67,7 @@ def systems_check(robot):
 		getattr(robot['simu'], robot['name']).waypoint
 		print("[+] Robot {0} actuator: waypoint online".format(robot['name']))
 	except:
-		print("[+] Robot {0} actuator: waypoint offline".format(robot['name']))
+		print("[-] Robot {0} actuator: waypoint offline".format(robot['name']))
 		return None
 
 	# Verify 'motionWM' actuator
@@ -75,7 +75,7 @@ def systems_check(robot):
 		getattr(robot['simu'], robot['name']).motion
 		print("[+] Robot {0} actuator: motion online".format(robot['name']))
 	except:
-		print("[+] Robot {0} actuator: motion offline".format(robot['name']))
+		print("[-] Robot {0} actuator: motion offline".format(robot['name']))
 		return None
 
 	# Verify 'VideoCamera' sensor
@@ -83,7 +83,7 @@ def systems_check(robot):
 		getattr(robot['simu'], robot['name']).PTU.videocamera
 		print("[+] Robot {0} sensor: video camera online".format(robot['name']))
 	except:
-		print("[+] Robot {0} sensor: video camera offline".format(robot['name']))
+		print("[-] Robot {0} sensor: video camera offline".format(robot['name']))
 		return None
 
 
@@ -123,7 +123,6 @@ def pong (redis, commStr):
 def receiveWaypoints(robot, delta, redis, connStr, comm):
 
 	halt = False
-	speed = 1
 
 	# While there are still targets and the quadcopter has not been told to stop
 	while (halt == False):
@@ -140,7 +139,7 @@ def receiveWaypoints(robot, delta, redis, connStr, comm):
 				elif (msg_data['tag'] == 3): # A Waypoint msg
 					# Get own position
 					status = get_status(robot);
-	
+
 					waypoint = (msg_data['x'], msg_data['y'])
 					heading_toward = (msg_data['heading_x'], msg_data['heading_y'])
 
@@ -156,13 +155,13 @@ def receiveWaypoints(robot, delta, redis, connStr, comm):
 					# Set waypoint
 					dest = {'x':waypoint[0], 'y':waypoint[1], 'heading':theta}
 
-					getattr(robot['simu'], robot['name']).waypoint.goto(dest['x'], dest['y'], 30, theta, 0.2)
+					getattr(robot['simu'], robot['name']).waypoint.goto(dest['x'], dest['y'], 30, theta, 0.01)
 					robot['destination'] = dest
 
 					# Calculate distance to destination
 					#distance = nm.sqrt(((dest['x'] - status['pos_x']) ** 2 ) + ((dest['y'] - status['pos_y']) ** 2 ))
 					# Modify speed based on target distance from destination
-					# Commented out because the waypoint navigation does this automatically 
+					# Commented out because the waypoint navigation does this automatically
 					#if (distance > delta + 1):
 					#	speed = min (speed * (distance / (delta + distance) ) + 0.1, robot['MAX_SPEED'])
 					#elif (distance < delta + 1):
@@ -186,7 +185,7 @@ def receiveWaypoints(robot, delta, redis, connStr, comm):
 
 					# Use spherical coordinates to tilt the camera's gimbal
 					# Code adapted from Morse Simulator: http://www.openrobots.org/morse/doc/1.2/_modules/morse/actuators/ptu.html
-					
+
 					# Get own position
 					status = get_status(robot);
 					# Calc target position with respect to camera/gimbal
@@ -194,15 +193,15 @@ def receiveWaypoints(robot, delta, redis, connStr, comm):
 					distance = nm.sqrt (target[0] ** 2 + target[1] ** 2 + target[2] ** 2)
 					theta = math.asin (target[2] / distance)
 					phi = math.atan2 (target[1], target[0])
-					
+
 					parent_pan = getattr(robot['simu'], robot['name']).pose.get()['yaw']
 					parent_tilt = getattr(robot['simu'], robot['name']).pose.get()['pitch']
 
-					pan = phi - parent_pan
+					pan = 0.1 * phi - parent_pan
 					tilt = -theta + parent_tilt
 
 					getattr(robot['simu'], robot['name']).PTU.set_pan_tilt(0, tilt)
-	
+
 		# Publish info
 		status = get_status(robot);
 		current = getattr(robot['simu'], robot['name']).PTU.videocamera.get_configurations()
@@ -223,7 +222,7 @@ def receiveWaypoints(robot, delta, redis, connStr, comm):
 		info_json = json.dumps (info, separators = (',', ':'))
 		print (info['pos_x'], info['pos_y'])
 		redis.publish (connStr, info_json)
-		time.sleep(0.5)
+		time.sleep(0.01)
 	return 0
 
 
@@ -276,7 +275,7 @@ def main ():
 		z_angle = float (rotation[2])
 
 		camera = {'xSensor_mm':cam_height,
-			'ySensor_mm':cam_width, 
+			'ySensor_mm':cam_width,
 			'focallen_mm':cam_focallen,
 			'xGimbal_deg':math.degrees (z_angle),
 			'yGimbal_deg':math.degrees (y_angle)}
@@ -285,7 +284,7 @@ def main ():
 
 		# Ensure expected robot configuraton
 		systems_check (robot)
-		
+
 		# Listen for messages
 		read = False
 		for msg in p.listen ():
@@ -301,7 +300,7 @@ def main ():
 				elif (msg_data['tag'] == Command.terminate):
 					halt (robot)
 					break
-				time.sleep (0.5)
+				time.sleep (0.001)
 
 if __name__ == "__main__":
 	main ()

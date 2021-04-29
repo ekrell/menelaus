@@ -1,92 +1,107 @@
 # menelaus
-A single quadcopter follows a group of friendly targets who periodically share their waypoints and positions. 
-The quadcopter attempts to keep the targets in camera view as much as possible. 
-However, the quadcopter also positions itself such that it can remain in place when possible to save energy while tracking the targets.
 
-## overview
-Much work has been done on target tracking with unmanned aerial vehicles.
-However, the typical vehicle is a fixed wing with limited hovering or cruising ability. 
-Also, the targets are not typically sharing positional information with the tracking vehicle.
-This project explores the use of a quadcopter as a tracking vehicle whose targets are part of its multi-robot team and share information. 
-Of interest is how such information can be used for autonomous path planning for the quadcopter that minimizes movement since hovering uses less energy than moving. 
-Rather than constantly "tail-chase" the targets, the quadcopter should predict the path of the targets and select a place to hover while continuing to pan and tilt the camera.  
+In this repo, a single quadcopter maintains a group of friendly ground vehicles in camera view. 
+The ground vehicles are considered friendly because they are periodically broadcasting their positions.
+Simulation takes place in the [morse](https://www.openrobots.org/morse/doc/stable/morse.html) simulator,
+and communication between robots is handled through a publisher/subscriber scheme implemented with [redis](https://redis.io/). 
 
-The quadcopter should be able to follow a variety of platforms and in a variety of terrain types. 
-Heterogeneity of targets and terrains affect the path prediction. 
-Machine learning should be used to enable to the quadcopter to track more effectively through more accurate path predictions. 
+## Description
 
-An additional feature would be to specify some point or area as an additional non-vehicle target. If possible, the quadcopter continues tracking the target vehicles while also keeping the stationary targets in view.
-This would be of use to a remote operator of vehicles who wants to not only see the vehicle(s) from a good angle, but also certain objects or locations in the environment. 
-Another idea is to keep the altitude set by the user rather than the autonomous quadcopter. It is reasonable that a user wants to view the targets, but also some amount of area around the targets to be truly useful. 
-Or even a completely separate autonomous behavior that sends the altitude to this following behavior, based on some application-specific criteria. 
+Given a group of ground vehicles, the goal is to keep as much of the group as possible in camera view by following them with a quadcopter.
+The quadcopter is able to tail-chase the group's centroid, while adjusting the camera angle toward the centroid. 
+The quadcopter can also adjust its elevation to change the size of the camera footprint as the ground vehicles get closer or further from each other.
+However, the quadcopter hovers in place whenever possible. 
+This is because it is more efficient to hover than chase and it is easier to capture stable video.
 
-Generally, the project should be useful for a variety of multi-robot team applications.
-But specifically, it is intended to be of use in the marine disaster recovery domain.
-Multiple EMILY ERS robots can be better utilized if the first responders have an overhead view of the vehicles, rather than the elongated (and potentially occluded) view from the ship or shore. 
-The ability to add non-vehicle targets would allow the first responders to see not only the vehicles, but have a view of the victim's location such as a capsizing ship. 
+The quadcopter relies entirely on position messages recieved from the ground vehicles.
+This is more reliable than computer vision, assuming a steady stream of accurate positions. 
+The quadcopter's onboard computation is freed up for other tasks. 
+The disadvantage is the reliance on communication, so it must be part of a cooperate system. 
 
-Since the quadcopter is using communication for following and not the camera, resources are free to use the camera for other vision tasks such as helping the targets with collision avoidance. 
+I developed the bulk of this system for a 2016 AI Robotics class taught by [Dr. Robin Murphy](https://engineering.tamu.edu/cse/profiles/rmurphy.html).
+For the class, I conducted experiments on the effect of the position broadcast rate on the ability to maintain the targets in view. 
+Too few messages obviously lead to gaps where the quadcopter loses the targets and has to catch up, but too many needlessly floods the network. 
 
-## plan
+## Quick start
 
-The system is developed in increments. 
-Each step could be its own behavior, progressing toward more sophisticated behaviors. 
+The following instructions are for Ubuntu Linux, but should be very similar for other Linux distributions. 
+The most recently tested is Ubuntu 18.04. _Not the prettiest instructions. 
+Would prefer to use a virtual environment and avoid modifying shell environment variables_
 
-1.  **basic following (done)**
+In the following, `<DIR>` is whatever directory you were in when you performed the `git clone` step. 
 
-	The quadcopter can tail-chase a group of targets.
+### Install dependencies
 
-2. **pan and tilt (done)**
+    sudo apt-get install morse-simulator python3-morse-simulator
 
-	The quadcopter faces toward the centroid of the targets' next waypoint
- 	and tilts the camera to keep their current position centroid in view. 
+    sudo apt-get install redis-server
 
-3. **basic hover (done)**
+    pip3 install redis
 
-	Instead of tail-chasing, the quadcopter hovers behind the targets. 
-	When the targets are leaving the camera footprint, the quadcopter catches up and hovers again. 
-	If the targets are often staying in a confined space, this may be sufficient for some applications. 
+### Install
 
-	At this stage, I did experiments to see the advantage of using the next waypoint as heading instead of 
-	simply using current direction of the targets. There was an advantage as the targets would face the wrong direction at
-	times as they navigated over very hilly terrain. This would cause the quadcopter to need to readjust more often.  
+    git clone https://github.com/ekrell/menelaus.git
 
-4. **simple predictive hover (in progress)**
+ Add the following line to your `.bashrc`, or else run this every time you open a terminal.
 
-	The quadcopter uses the current speed of the targets and their next waypoints to create a very simple path prediction.
-	The quadcopter finds a location to hover that keeps this path in view the longest before having to reposition.
+    export PYTHONPATH="${PYTHONPATH}:<DIR>/menelaus/lib"
 
-5. **add stationary targets**
+### Directory structure
 
-	The quadcopter could keep stationary points in view. A large object to keep in view could be represented as a bounding box of four points. 
+	menelaus           
+	├── inData         Files with start points and waypoints for the ground robot trajectories
+	├── lib            Python modules
+	├── README.md      This document
+	├── robots         Scripts that define quadcopter and rover. Vehicle behaviors and communication instantiated here.
+	├── scenes         Scripts with morse simulator scenes. Vehicles and environment instantiated here. 
+	└── scripts        Scripts defining behaviors for an already instantiated robot, such as "follow_targets" and "monitor_position"
 
-6. **sophisticated prediction hover**
+### Architecture
 
-	Use machine learning to incorporate the actual movement characteristics of the various targets.
-	For example, the paths of the EMILY ERS are far from straight, holonomic lines. Rather they swerve significantly. 
-	Also could incorporate terrain characteristics. 
+The morse simulator is instantiated with a scene script that defines what 3D environment to load and with what robots/sensors/etc. 
+Executing this script launches the morse simulator and vehicles, but they are just sitting there waiting for instructions. 
+Scene scripts are located in `menelaus/scenes`. 
+
+Each robot type (quadcopter and rover) has a corresponding robot script in `menelaus/robots/`. 
+These scripts setup the publisher/subscriber communication for the robots defined in the morse scene,
+as well as some default functionality. Each robot in morse has a unique name that is used when 
+executing the script to instantiate the specified robot. That is, `python3 robots/rover.py -n susan` will
+setup the communication for a rover that has a unique name of `susan` in a currently running morse scene. 
+
+Robots may be assigned tasks with behaviors in `menelaus/scripts`. Read on for a demonstration of `follow_targets.py`. 
+
+### Demonstration: follow targets
+
+This demonstration uses a quadcopter named _Godot_ to follow target rovers _Susan_ and _Anton_. 
+Do each of the following in a separate terminal after navigating to `<DIR>/menelaus`. 
+
+**Launch Morse scene**
+
+    morse run scenes/field_exercise_1.py
+
+**Start a rover named susan**
+
+    python3 robots/rover.py -n susan -w inData/round10/susan.waypoints
+
+**Start a rover named anton**
+
+    python3 robots/rover.py -n anton -w inData/round10/anton.waypoints
+
+**Start a quadcopter named godot**
+
+    python3 robots/copter.py -n godot
+
+**Initiate follow behavior**
+
+    python3 scripts/follow_targets.py -q godot -t susan,anton
+
+## Gallery
+
+video
+
+screenshots
+
+## Future work ideas
 
 
-## environment 
-
-The system in being developed using the Morse simulator, which makes it easy to work with a variety of robots in a 3D environment with terrain. 
-
-Since each robot and the GCS are run with independent python scripts, using a subscriber-publisher message passing system with the REDIS NoSQL database.
-MORSE is a server where I can connect to the robots, but then I can only use the functions in MORSE to work with the robots.
-Where MORSE might have a "status" function with the current position of the robot, I define a tailored status function for the particular robot with other information such as "next waypoint" and "destination waypoint". 
-So to keep things coordinates, only a particular robot's python script can call MORSE functions related to that robot. Other robots (and the GCS) can send messages to the robot to request information and send tasks to the robot. 
-I worry that the above sentences make little sense, but I will provide a diagram soon that I hope will clarify. 
-
-## robots
-
-Currently two robots are defined:
-
-- QCOORD: The protagonist, this is the "quadcopter coordinator" who will keep the targets in view as best as it can. 
-
-- MARISA: This is a UGV (specifically an ATRV). Named to differentiate from the USV EMILY which is the real motivating robot for the research. Choose to work with UGVs for simulation since they are well supported in MORSE. Once I have everything working for the MARISA robots, will try to simulate USVs comparable to the EMILY. 
-
-
-## installation and use
-
-Will add soon. 
 
