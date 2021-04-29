@@ -5,6 +5,8 @@ The ground vehicles are considered friendly because they are periodically broadc
 Simulation takes place in the [morse](https://www.openrobots.org/morse/doc/stable/morse.html) simulator,
 and communication between robots is handled through a publisher/subscriber scheme implemented with [redis](https://redis.io/). 
 
+**Need to stabilize the camera and smooth out the waypoint following!##
+
 ## Description
 
 Given a group of ground vehicles, the goal is to keep as much of the group as possible in camera view by following them with a quadcopter.
@@ -95,13 +97,8 @@ Do each of the following in a separate terminal after navigating to `<DIR>/menel
 
     python3 scripts/follow_targets.py -q godot -t susan,anton
 
-## Gallery
+## Video
 
-video
-
-screenshots
-
-## Future work ideas
-
+[<img src="menelaus_vid.png">](https://youtu.be/E-1yLZON6yQ)
 
 
